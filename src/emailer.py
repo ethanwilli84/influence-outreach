@@ -7,7 +7,7 @@ GMAIL_USER = "ethan@sireapp.io"
 
 TEMPLATE = """Hey {name},
 
-I wanted to reach out to see what the process looks like for potentially being a guest on the show. I really love the work you guys put out and honestly feel like my generation needs more of it. We need more people standing up and talking about what they actually believe in.
+I wanted to reach out to see what the process looks like for potentially being a guest on the platform. I really love the work you guys put out and honestly feel like my generation needs more of it. We need more people standing up and talking about what they actually believe in.
 
 I haven't done too many public appearances in the past since I live a pretty private life, but I'm looking to start doing more because I genuinely believe my story can inspire others and my message moves people. I've spoken at a few schools and to entrepreneur groups but I'd really like to make a larger impact on a broader scale.
 
@@ -19,6 +19,8 @@ Thanks,
 Ethan Williams
 ethan@sireapp.io | +1 (734) 664-5129
 Instagram: @ethan.williamsx"""
+
+SUBJECT = "Quick question about guesting"
 
 def send_email(contact: dict, opportunity: dict) -> bool:
     try:
@@ -33,7 +35,7 @@ def send_email(contact: dict, opportunity: dict) -> bool:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = recipient
-        msg['Subject'] = "Guest Appearance Inquiry"
+        msg['Subject'] = SUBJECT
         msg['Reply-To'] = GMAIL_USER
         msg.attach(MIMEText(TEMPLATE.format(name=name), 'plain'))
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
