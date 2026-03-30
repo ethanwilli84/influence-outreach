@@ -1,39 +1,35 @@
-import gspread
-import json
 import os
 from datetime import datetime
-from google.oauth2.service_account import Credentials
+from pymongo import MongoClient
 
-SHEET_ID = "1woOQZ6hpN8uDATFZar0Nm7QVwMDsWM7adQpl1nxGse0"
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-HEADERS = ['Date', 'Platform Name', 'Category', 'Website', 'Emails Sent', 'Status', 'Description', 'Why Fit']
+MONGO_URI = os.environ["MONGODB_URI"]
+DB_NAME = "ethan-dev"
 
-def get_client():
-    creds = Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_SHEETS_CREDS"]), scopes=SCOPES)
-    return gspread.authorize(creds)
+def get_col():
+    client = MongoClient(MONGO_URI)
+    return client[DB_NAME]["ethan_outreach"]
 
 def get_already_contacted() -> list:
     try:
-        sheet = get_client().open_by_key(SHEET_ID).sheet1
-        return [r['Platform Name'] for r in sheet.get_all_records() if r.get('Platform Name')]
+        col = get_col()
+        return [r["name"] for r in col.find({}, {"name": 1}) if r.get("name")]
     except Exception as e:
-        print(f"Sheet read error: {e}")
+        print(f"MongoDB read error: {e}")
         return []
 
-def log_to_sheet(opportunity: dict, emails_sent: list, status: str = 'Sent'):
+def log_to_sheet(opportunity: dict, emails_sent: list, status: str = "Sent"):
     try:
-        sheet = get_client().open_by_key(SHEET_ID).sheet1
-        if not sheet.get_all_records():
-            sheet.insert_row(HEADERS, 1)
-        sheet.append_row([
-            datetime.now().strftime('%Y-%m-%d'),
-            opportunity.get('name', ''),
-            opportunity.get('category', ''),
-            opportunity.get('website', ''),
-            ', '.join(emails_sent) if emails_sent else '',
-            status,
-            opportunity.get('description', ''),
-            opportunity.get('why_fit', '')
-        ])
+        col = get_col()
+        col.insert_one({
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "name": opportunity.get("name", ""),
+            "category": opportunity.get("category", ""),
+            "website": opportunity.get("website", ""),
+            "emailsSent": ", ".join(emails_sent) if emails_sent else "",
+            "status": status,
+            "description": opportunity.get("description", ""),
+            "why_fit": opportunity.get("why_fit", ""),
+            "createdAt": datetime.utcnow(),
+        })
     except Exception as e:
-        print(f"Sheet log error: {e}")
+        print(f"MongoDB log error: {e}")
