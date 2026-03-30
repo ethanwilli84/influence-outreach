@@ -2,6 +2,7 @@ import anthropic
 import json
 import os
 import re
+import time
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
@@ -47,20 +48,34 @@ Return ONLY a valid JSON array. No other text. Each object:
   "why_fit": "why Ethan fits here specifically"
 }}"""
 
-def find_opportunities(already_contacted: list) -> list:
+def find_opportunities(already_contacted: list, retries: int = 3) -> list:
     already_str = ", ".join(already_contacted[-100:]) if already_contacted else "none yet"
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4000,
-            tools=[{"type": "web_search_20250305", "name": "web_search"}],
-            messages=[{"role": "user", "content": PROMPT.format(already_contacted=already_str)}]
-        )
-        full_text = "".join(b.text for b in response.content if hasattr(b, 'text'))
-        return parse_json(full_text)
-    except Exception as e:
-        print(f"Research error: {e}")
-        return []
+
+    for attempt in range(retries):
+        try:
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=4000,
+                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                messages=[{"role": "user", "content": PROMPT.format(already_contacted=already_str)}]
+            )
+            full_text = "".join(b.text for b in response.content if hasattr(b, 'text'))
+            results = parse_json(full_text)
+            if results:
+                return results
+            print(f"  Research returned empty, retry {attempt + 1}/{retries}...")
+            time.sleep(15)
+
+        except anthropic.RateLimitError:
+            wait = 45 * (attempt + 1)
+            print(f"  Research rate limit, waiting {wait}s before retry {attempt + 1}/{retries}...")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"Research error: {e}")
+            time.sleep(15)
+
+    print("Research failed after all retries")
+    return []
 
 def parse_json(text: str) -> list:
     text = text.strip()

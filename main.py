@@ -14,6 +14,10 @@ def main():
     opportunities = find_opportunities(already_contacted)
     print(f"Found {len(opportunities)} new opportunities\n")
 
+    if not opportunities:
+        print("No opportunities found, exiting.")
+        return
+
     # Wait after research call to reset rate limit window
     print("Waiting 65 seconds before contact search to avoid rate limits...\n")
     time.sleep(65)
@@ -38,7 +42,6 @@ def main():
                 log_to_sheet(opp, emails_sent)
 
             print()
-            # Wait between each opportunity to avoid rate limits
             time.sleep(15)
 
         except Exception as e:
