@@ -12,18 +12,30 @@ About Ethan:
 - Founded a software company doing $5M+/year revenue
 - Leads a young entrepreneur community called The Taco Project
 - Topics: entrepreneurship, gen z mindset, travel/culture, living a full life while building, overcoming struggles
-- Looking for: podcasts, speaking panels, pitch competitions, competition/game shows
 - Has spoken at schools and entrepreneur groups before
+- No large public following yet — his credibility is his story and substance, not fame
+
+IMPORTANT — Target platform size:
+Look for platforms that are ACTIVELY GROWING but not mega-famous. Ethan has no public following yet so massive shows like Full Send, No Jumper, Ed Mylett, or Joe Rogan will NOT respond to a cold pitch from someone unknown. Avoid these.
+
+Instead target:
+- Podcasts with 1,000–100,000 listeners/followers that are hungry for interesting guests
+- Up and coming hosts who are building their audience and book guests based on story quality, not fame
+- College and university entrepreneurship events, panels, and podcasts
+- Local NYC startup/entrepreneur events and panels
+- Niche podcasts in sneakers, reselling, fintech, gen z, young money, lifestyle
+- Pitch competitions open to any founder
+- Smaller competition/reality formats that are actively casting
+
+The sweet spot: platforms big enough that appearing on them is worthwhile, small enough that they'll actually respond to a cold pitch from a compelling unknown.
 
 Already contacted (skip these): {already_contacted}
-
-Find opportunities that are actively booking guests, have a real audience, and would respond to a cold pitch.
 
 Categories to find (mix them):
 1. Podcasts booking guests — entrepreneurship, culture, mindset, gen z, sneakers, lifestyle
 2. Speaking panels/events — NYC startup, entrepreneur panels, college events
-3. Business pitch competitions — open to founders, live stage
-4. Competition/reality shows — entrepreneurship or lifestyle focused
+3. Business pitch competitions — open to any founder, live stage
+4. Competition/reality shows — entrepreneurship or lifestyle focused, actively casting
 
 Return ONLY a valid JSON array. No other text. Each object:
 {{
