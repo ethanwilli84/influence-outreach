@@ -5,9 +5,7 @@ from email.mime.multipart import MIMEMultipart
 
 GMAIL_USER = "ethan@sireapp.io"
 
-TEMPLATE = """Hey {name},
-
-I wanted to reach out to see what the process looks like for potentially being a guest on the platform. I really love the work you guys put out and honestly feel like my generation needs more of it. We need more people standing up and talking about what they actually believe in.
+TEMPLATE = """Hey, I wanted to reach out to see what the process looks like for potentially being a guest on the platform. I really love the work you guys put out and honestly feel like my generation needs more of it. We need more people standing up and talking about what they actually believe in.
 
 I haven't done too many public appearances in the past since I live a pretty private life, but I'm looking to start doing more because I genuinely believe my story can inspire others and my message moves people. I've spoken at a few schools and to entrepreneur groups but I'd really like to make a larger impact on a broader scale.
 
@@ -27,17 +25,12 @@ def send_email(contact: dict, opportunity: dict) -> bool:
         recipient = contact.get('email', '').strip()
         if not recipient or '@' not in recipient:
             return False
-        name = contact.get('name')
-        if name and name != 'null' and isinstance(name, str) and ' ' in name:
-            name = name.strip().split()[0]
-        elif not name or name == 'null':
-            name = opportunity.get('name', 'there')
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = recipient
         msg['Subject'] = SUBJECT
         msg['Reply-To'] = GMAIL_USER
-        msg.attach(MIMEText(TEMPLATE.format(name=name), 'plain'))
+        msg.attach(MIMEText(TEMPLATE, 'plain'))
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(GMAIL_USER, os.environ["GMAIL_APP_PASSWORD"])
             server.send_message(msg)
