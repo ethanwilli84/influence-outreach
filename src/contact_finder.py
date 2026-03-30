@@ -2,6 +2,7 @@ import anthropic
 import json
 import os
 import re
+import time
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
@@ -17,25 +18,34 @@ Return ONLY a valid JSON array. Max 4 contacts. No other text:
 
 Only include emails you actually found or can reasonably guess from their domain pattern."""
 
-def find_contacts(opportunity: dict) -> list:
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1500,
-            tools=[{"type": "web_search_20250305", "name": "web_search"}],
-            messages=[{"role": "user", "content": PROMPT.format(
-                name=opportunity.get('name', ''),
-                website=opportunity.get('website', ''),
-                contact_page=opportunity.get('contact_page', opportunity.get('website', ''))
-            )}]
-        )
-        full_text = "".join(b.text for b in response.content if hasattr(b, 'text'))
-        contacts = parse_json(full_text)
-        filtered = [c for c in contacts if c.get('confidence') != 'low']
-        return filtered[:3] if filtered else contacts[:2]
-    except Exception as e:
-        print(f"  Contact finder error: {e}")
-        return []
+def find_contacts(opportunity: dict, retries: int = 3) -> list:
+    for attempt in range(retries):
+        try:
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1000,
+                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                messages=[{"role": "user", "content": PROMPT.format(
+                    name=opportunity.get('name', ''),
+                    website=opportunity.get('website', ''),
+                    contact_page=opportunity.get('contact_page', opportunity.get('website', ''))
+                )}]
+            )
+            full_text = "".join(b.text for b in response.content if hasattr(b, 'text'))
+            contacts = parse_json(full_text)
+            filtered = [c for c in contacts if c.get('confidence') != 'low']
+            return filtered[:3] if filtered else contacts[:2]
+
+        except anthropic.RateLimitError as e:
+            wait = 30 * (attempt + 1)
+            print(f"  Rate limit hit, waiting {wait}s before retry {attempt + 1}/{retries}...")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"  Contact finder error: {e}")
+            return []
+
+    print(f"  ✗ Failed after {retries} retries")
+    return []
 
 def parse_json(text: str) -> list:
     text = text.strip()
