@@ -20,7 +20,7 @@ Ethan Williams
 ethan@sireapp.io | +1 (734) 664-5129
 Instagram: @ethan.williamsx"""
 
-SUBJECT = "Quick question about guesting"
+SUBJECT = "Guest Appearance - Ethan Williams"
 
 def send_email(contact: dict, opportunity: dict) -> bool:
     try:
