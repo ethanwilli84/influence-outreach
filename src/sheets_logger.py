@@ -3,7 +3,7 @@ from datetime import datetime
 from pymongo import MongoClient
 
 MONGO_URI = os.environ["MONGODB_URI"]
-DB_NAME = "ethan-dev"
+DB_NAME = "ethan-admin"
 
 def get_col():
     client = MongoClient(MONGO_URI)

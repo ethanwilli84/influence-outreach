@@ -6,7 +6,7 @@ import time
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-PROMPT = """Search the web and find 15 NEW speaking/podcast/competition opportunities for a 20-year-old NYC entrepreneur named Ethan Williams.
+PROMPT = """Search the web and find 15 NEW podcast or public speaking opportunities for a 20-year-old NYC entrepreneur named Ethan Williams.
 
 About Ethan:
 - 20 years old, based in NYC
@@ -21,27 +21,25 @@ Look for platforms that are ACTIVELY GROWING but not mega-famous. Ethan has no p
 
 Instead target:
 - Podcasts with 1,000–100,000 listeners/followers that are hungry for interesting guests
-- Up and coming hosts who are building their audience and book guests based on story quality, not fame
+- Up and coming hosts who book guests based on story quality, not fame
 - College and university entrepreneurship events, panels, and podcasts
 - Local NYC startup/entrepreneur events and panels
 - Niche podcasts in sneakers, reselling, fintech, gen z, young money, lifestyle
-- Pitch competitions open to any founder
-- Smaller competition/reality formats that are actively casting
 
-The sweet spot: platforms big enough that appearing on them is worthwhile, small enough that they'll actually respond to a cold pitch from a compelling unknown.
+Do NOT include pitch competitions, business plan competitions, or any format that requires Ethan to prepare a deck or business presentation. He wants to show up and talk — not prepare materials.
+
+The sweet spot: platforms big enough to be worthwhile, small enough to actually respond to a cold pitch.
 
 Already contacted (skip these): {already_contacted}
 
 Categories to find (mix them):
-1. Podcasts booking guests — entrepreneurship, culture, mindset, gen z, sneakers, lifestyle
-2. Speaking panels/events — NYC startup, entrepreneur panels, college events
-3. Business pitch competitions — open to any founder, live stage
-4. Competition/reality shows — entrepreneurship or lifestyle focused, actively casting
+1. Podcasts actively booking guests — entrepreneurship, culture, mindset, gen z, sneakers, lifestyle
+2. Speaking panels/events — NYC startup events, entrepreneur panels, college campus talks
 
 Return ONLY a valid JSON array. No other text. Each object:
 {{
   "name": "platform name",
-  "category": "podcast/speaking/competition/show",
+  "category": "podcast/speaking",
   "website": "https://...",
   "contact_page": "https://...",
   "description": "one sentence about what they are",
