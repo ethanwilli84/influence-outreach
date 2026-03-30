@@ -1,27 +1,24 @@
 import os
+import json
+import urllib.request
 from datetime import datetime
-from pymongo import MongoClient
 
-MONGO_URI = os.environ["MONGODB_URI"]
-DB_NAME = "ethan-admin"
+ADMIN_URL = os.environ.get("ADMIN_URL", "https://ethan-admin-hlfdr.ondigitalocean.app")
 CAMPAIGN = "influence-outreach"
-
-def get_col():
-    client = MongoClient(MONGO_URI)
-    return client[DB_NAME]["outreach_records"]
 
 def get_already_contacted() -> list:
     try:
-        col = get_col()
-        return [r["name"] for r in col.find({"campaign": CAMPAIGN}, {"name": 1}) if r.get("name")]
+        req = urllib.request.Request(f"{ADMIN_URL}/api/outreach?campaign={CAMPAIGN}")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            records = json.loads(resp.read())
+            return [r["name"] for r in records if r.get("name")]
     except Exception as e:
-        print(f"MongoDB read error: {e}")
+        print(f"API read error: {e}")
         return []
 
 def log_to_sheet(opportunity: dict, emails_sent: list, status: str = "Sent"):
     try:
-        col = get_col()
-        col.insert_one({
+        payload = json.dumps({
             "campaign": CAMPAIGN,
             "date": datetime.now().strftime("%Y-%m-%d"),
             "name": opportunity.get("name", ""),
@@ -31,7 +28,16 @@ def log_to_sheet(opportunity: dict, emails_sent: list, status: str = "Sent"):
             "status": status,
             "description": opportunity.get("description", ""),
             "why_fit": opportunity.get("why_fit", ""),
-            "createdAt": datetime.utcnow(),
-        })
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            f"{ADMIN_URL}/api/log",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read())
+            if result.get("ok"):
+                print(f"  Logged to DB: {opportunity.get('name', '')}")
     except Exception as e:
-        print(f"MongoDB log error: {e}")
+        print(f"  Log error: {e}")
