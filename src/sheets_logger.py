@@ -20,7 +20,7 @@ def get_already_contacted() -> list:
         print(f"Sheet read error: {e}")
         return []
 
-def log_to_sheet(opportunity: dict, emails_sent: list):
+def log_to_sheet(opportunity: dict, emails_sent: list, status: str = 'Sent'):
     try:
         sheet = get_client().open_by_key(SHEET_ID).sheet1
         if not sheet.get_all_records():
@@ -30,8 +30,8 @@ def log_to_sheet(opportunity: dict, emails_sent: list):
             opportunity.get('name', ''),
             opportunity.get('category', ''),
             opportunity.get('website', ''),
-            ', '.join(emails_sent),
-            'Sent',
+            ', '.join(emails_sent) if emails_sent else '',
+            status,
             opportunity.get('description', ''),
             opportunity.get('why_fit', '')
         ])

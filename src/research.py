@@ -6,7 +6,7 @@ import time
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-PROMPT = """Search the web and find 10 NEW speaking/podcast/competition opportunities for a 20-year-old NYC entrepreneur named Ethan Williams.
+PROMPT = """Search the web and find 15 NEW speaking/podcast/competition opportunities for a 20-year-old NYC entrepreneur named Ethan Williams.
 
 About Ethan:
 - 20 years old, based in NYC

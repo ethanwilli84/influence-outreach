@@ -22,12 +22,15 @@ def main():
     print("Waiting 65 seconds before contact search to avoid rate limits...\n")
     time.sleep(65)
 
+    sent_count = 0
     for opp in opportunities:
         try:
             print(f"Processing: {opp.get('name')} ({opp.get('category')})")
             contacts = find_contacts(opp)
+
             if not contacts:
-                print(f"  ✗ No contacts found, skipping\n")
+                print(f"  ✗ No contacts found, logging anyway\n")
+                log_to_sheet(opp, [], status='No Contact Found')
                 continue
 
             emails_sent = []
@@ -39,7 +42,10 @@ def main():
                 time.sleep(3)
 
             if emails_sent:
-                log_to_sheet(opp, emails_sent)
+                log_to_sheet(opp, emails_sent, status='Sent')
+                sent_count += 1
+            else:
+                log_to_sheet(opp, [], status='Send Failed')
 
             print()
             time.sleep(15)
@@ -47,7 +53,7 @@ def main():
         except Exception as e:
             print(f"  ✗ Error: {e}\n")
 
-    print(f"✅ Done.")
+    print(f"✅ Done. Successfully sent to {sent_count} platforms.")
 
 if __name__ == "__main__":
     main()
