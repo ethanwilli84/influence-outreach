@@ -3,13 +3,17 @@ import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-GMAIL_USER = "ethan@sireapp.io"
+def send_email(contact: dict, opportunity: dict, config: dict = None) -> bool:
+    cfg = config or {}
+    gmail_user = cfg.get("senderEmail") or os.environ.get("GMAIL_USER", "ethan@sireapp.io")
+    sender_name = cfg.get("senderName", "Ethan Williams")
+    subject = cfg.get("emailSubject", "Guest Appearance - Ethan Williams")
+    template = cfg.get("template", "")
 
-TEMPLATE = """Hey, I wanted to reach out to see what the process looks like for potentially being a guest on the platform. I really love the work you guys put out and honestly feel like my generation needs more of it. We need more people standing up and talking about what they actually believe in.
+    if not template:
+        template = """Hey, I wanted to reach out to see what the process looks like for potentially being a guest on the platform. I really love the work you guys put out and honestly feel like my generation needs more of it.
 
-I haven't done too many public appearances in the past since I live a pretty private life, but I'm looking to start doing more because I genuinely believe my story can inspire others and my message moves people. I've spoken at a few schools and to entrepreneur groups but I'd really like to make a larger impact on a broader scale.
-
-For context, I'm 20 years old, based in New York City, and I founded a software company, Sire, that now does a little over $5 million per year in revenue. I also lead a community of young entrepreneurs called the Taco Project, pretty interesting origin story, but all good people actually making a difference in the world.
+For context, I'm 20 years old, based in New York City, and I founded a software company that now does a little over $5 million per year in revenue. I also lead a community of young entrepreneurs called the Taco Project.
 
 Would love to learn more about the process and what the upcoming calendar looks like for you guys.
 
@@ -18,21 +22,20 @@ Ethan Williams
 ethan@sireapp.io | +1 (734) 664-5129
 Instagram: @ethan.williamsx"""
 
-SUBJECT = "Guest Appearance - Ethan Williams"
-
-def send_email(contact: dict, opportunity: dict) -> bool:
     try:
-        recipient = contact.get('email', '').strip()
+        recipient = (contact.get('email') or '').strip()
         if not recipient or '@' not in recipient:
             return False
+
         msg = MIMEMultipart()
-        msg['From'] = GMAIL_USER
+        msg['From'] = f"{sender_name} <{gmail_user}>"
         msg['To'] = recipient
-        msg['Subject'] = SUBJECT
-        msg['Reply-To'] = GMAIL_USER
-        msg.attach(MIMEText(TEMPLATE, 'plain'))
+        msg['Subject'] = subject
+        msg['Reply-To'] = gmail_user
+        msg.attach(MIMEText(template, 'plain'))
+
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(GMAIL_USER, os.environ["GMAIL_APP_PASSWORD"])
+            server.login(gmail_user, os.environ["GMAIL_APP_PASSWORD"])
             server.send_message(msg)
         return True
     except smtplib.SMTPRecipientsRefused:

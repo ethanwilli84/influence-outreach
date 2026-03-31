@@ -6,7 +6,7 @@ import time
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-PROMPT = """Find contact email addresses for "{name}" ({website}).
+DEFAULT_PROMPT = """Find contact email addresses for "{name}" ({website}).
 
 Search their website to find:
 1. Emails on their contact/booking/apply page: {contact_page}
@@ -18,23 +18,34 @@ Return ONLY a valid JSON array. Max 4 contacts. No other text:
 
 Only include emails you actually found or can reasonably guess from their domain pattern."""
 
-def find_contacts(opportunity: dict, retries: int = 3) -> list:
+def find_contacts(opportunity: dict, config: dict = None, retries: int = 3) -> list:
+    cfg = config or {}
+    prompt_template = cfg.get("contactPrompt", DEFAULT_PROMPT)
+    max_contacts = cfg.get("maxContactsPerPlatform", 3)
+    skip_low = cfg.get("skipLowConfidence", True)
+
+    prompt = prompt_template.format(
+        name=opportunity.get("name", ""),
+        website=opportunity.get("website", ""),
+        contact_page=opportunity.get("contact_page", opportunity.get("website", ""))
+    )
+
     for attempt in range(retries):
         try:
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=1000,
                 tools=[{"type": "web_search_20250305", "name": "web_search"}],
-                messages=[{"role": "user", "content": PROMPT.format(
-                    name=opportunity.get('name', ''),
-                    website=opportunity.get('website', ''),
-                    contact_page=opportunity.get('contact_page', opportunity.get('website', ''))
-                )}]
+                messages=[{"role": "user", "content": prompt}]
             )
             full_text = "".join(b.text for b in response.content if hasattr(b, 'text'))
             contacts = parse_json(full_text)
-            filtered = [c for c in contacts if c.get('confidence') != 'low']
-            return filtered[:3] if filtered else contacts[:2]
+
+            if skip_low:
+                filtered = [c for c in contacts if c.get("confidence") != "low"]
+                contacts = filtered if filtered else contacts
+
+            return contacts[:max_contacts]
 
         except anthropic.RateLimitError as e:
             wait = 30 * (attempt + 1)
@@ -44,7 +55,7 @@ def find_contacts(opportunity: dict, retries: int = 3) -> list:
             print(f"  Contact finder error: {e}")
             return []
 
-    print(f"  ✗ Failed after {retries} retries")
+    print(f"  Failed after {retries} retries")
     return []
 
 def parse_json(text: str) -> list:
@@ -52,19 +63,15 @@ def parse_json(text: str) -> list:
     if "```" in text:
         for part in text.split("```"):
             if part.startswith("json"):
-                text = part[4:].strip()
-                break
+                text = part[4:].strip(); break
             elif "[" in part:
-                text = part.strip()
-                break
+                text = part.strip(); break
     try:
         result = json.loads(text)
         return result if isinstance(result, list) else []
     except:
         match = re.search(r'\[.*\]', text, re.DOTALL)
         if match:
-            try:
-                return json.loads(match.group())
-            except:
-                pass
+            try: return json.loads(match.group())
+            except: pass
     return []

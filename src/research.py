@@ -6,7 +6,13 @@ import time
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-PROMPT = """Search the web and find 15 NEW podcast or public speaking opportunities for a 20-year-old NYC entrepreneur named Ethan Williams.
+def find_opportunities(already_contacted: list, config: dict = None, retries: int = 3) -> list:
+    # Use research prompt from admin config, fall back to default
+    prompt_template = (config or {}).get("researchPrompt", "")
+    per_session = (config or {}).get("perSession", 15)
+
+    if not prompt_template:
+        prompt_template = """Search the web and find {per_session} NEW podcast or public speaking opportunities for a 20-year-old NYC entrepreneur named Ethan Williams.
 
 About Ethan:
 - 20 years old, based in NYC
@@ -16,38 +22,17 @@ About Ethan:
 - Has spoken at schools and entrepreneur groups before
 - No large public following yet — his credibility is his story and substance, not fame
 
-IMPORTANT — Target platform size:
-Look for platforms that are ACTIVELY GROWING but not mega-famous. Ethan has no public following yet so massive shows like Full Send, No Jumper, Ed Mylett, or Joe Rogan will NOT respond to a cold pitch from someone unknown. Avoid these.
-
-Instead target:
-- Podcasts with 1,000–100,000 listeners/followers that are hungry for interesting guests
-- Up and coming hosts who book guests based on story quality, not fame
-- College and university entrepreneurship events, panels, and podcasts
-- Local NYC startup/entrepreneur events and panels
-- Niche podcasts in sneakers, reselling, fintech, gen z, young money, lifestyle
-
-Do NOT include pitch competitions, business plan competitions, or any format that requires Ethan to prepare a deck or business presentation. He wants to show up and talk — not prepare materials.
-
-The sweet spot: platforms big enough to be worthwhile, small enough to actually respond to a cold pitch.
+Target platforms with 1,000–100,000 listeners/followers. Avoid mega-famous shows.
+Focus on: college entrepreneurship events, NYC startup panels, niche podcasts (sneakers, fintech, gen z, young money).
+Do NOT include pitch competitions or formats requiring prepared materials.
 
 Already contacted (skip these): {already_contacted}
 
-Categories to find (mix them):
-1. Podcasts actively booking guests — entrepreneurship, culture, mindset, gen z, sneakers, lifestyle
-2. Speaking panels/events — NYC startup events, entrepreneur panels, college campus talks
+Return ONLY a valid JSON array of {per_session} objects. No other text:
+[{{"name":"...","category":"podcast|speaking","website":"...","contact_page":"...","description":"...","why_fit":"..."}}]"""
 
-Return ONLY a valid JSON array. No other text. Each object:
-{{
-  "name": "platform name",
-  "category": "podcast/speaking",
-  "website": "https://...",
-  "contact_page": "https://...",
-  "description": "one sentence about what they are",
-  "why_fit": "why Ethan fits here specifically"
-}}"""
-
-def find_opportunities(already_contacted: list, retries: int = 3) -> list:
     already_str = ", ".join(already_contacted[-100:]) if already_contacted else "none yet"
+    prompt = prompt_template.replace("{already_contacted}", already_str).replace("{per_session}", str(per_session))
 
     for attempt in range(retries):
         try:
@@ -55,18 +40,17 @@ def find_opportunities(already_contacted: list, retries: int = 3) -> list:
                 model="claude-sonnet-4-20250514",
                 max_tokens=4000,
                 tools=[{"type": "web_search_20250305", "name": "web_search"}],
-                messages=[{"role": "user", "content": PROMPT.format(already_contacted=already_str)}]
+                messages=[{"role": "user", "content": prompt}]
             )
             full_text = "".join(b.text for b in response.content if hasattr(b, 'text'))
             results = parse_json(full_text)
             if results:
-                return results
+                return results[:per_session]
             print(f"  Research returned empty, retry {attempt + 1}/{retries}...")
             time.sleep(15)
-
         except anthropic.RateLimitError:
             wait = 45 * (attempt + 1)
-            print(f"  Research rate limit, waiting {wait}s before retry {attempt + 1}/{retries}...")
+            print(f"  Research rate limit, waiting {wait}s...")
             time.sleep(wait)
         except Exception as e:
             print(f"Research error: {e}")
@@ -80,19 +64,15 @@ def parse_json(text: str) -> list:
     if "```" in text:
         for part in text.split("```"):
             if part.startswith("json"):
-                text = part[4:].strip()
-                break
+                text = part[4:].strip(); break
             elif "[" in part:
-                text = part.strip()
-                break
+                text = part.strip(); break
     try:
         result = json.loads(text)
         return result if isinstance(result, list) else []
     except:
         match = re.search(r'\[.*\]', text, re.DOTALL)
         if match:
-            try:
-                return json.loads(match.group())
-            except:
-                pass
+            try: return json.loads(match.group())
+            except: pass
     return []

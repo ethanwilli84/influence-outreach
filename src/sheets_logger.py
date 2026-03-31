@@ -4,14 +4,25 @@ import urllib.request
 from datetime import datetime
 
 ADMIN_URL = os.environ.get("ADMIN_URL", "https://ethan-admin-hlfdr.ondigitalocean.app")
-CAMPAIGN = "influence-outreach"
+CAMPAIGN = os.environ.get("CAMPAIGN_SLUG", "influence-outreach")
+
+def _fetch(path: str) -> dict:
+    try:
+        req = urllib.request.Request(f"{ADMIN_URL}{path}")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        print(f"API fetch error ({path}): {e}")
+        return {}
+
+def get_config() -> dict:
+    """Fetch full campaign config from admin API."""
+    return _fetch(f"/api/settings?campaign={CAMPAIGN}")
 
 def get_already_contacted() -> list:
     try:
-        req = urllib.request.Request(f"{ADMIN_URL}/api/outreach?campaign={CAMPAIGN}")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            records = json.loads(resp.read())
-            return [r["name"] for r in records if r.get("name")]
+        records = _fetch(f"/api/outreach?campaign={CAMPAIGN}")
+        return [r["name"] for r in records if r.get("name")]
     except Exception as e:
         print(f"API read error: {e}")
         return []

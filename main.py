@@ -3,22 +3,26 @@ from datetime import datetime
 from src.research import find_opportunities
 from src.contact_finder import find_contacts
 from src.emailer import send_email
-from src.sheets_logger import log_to_sheet, get_already_contacted
+from src.sheets_logger import log_to_sheet, get_already_contacted, get_config
 
 def main():
     print(f"\n🚀 Starting outreach run — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
 
+    # Fetch campaign config from admin (research prompt, contact prompt, template, etc.)
+    config = get_config()
+    print(f"Config loaded: perSession={config.get('perSession', 15)}, emailSubject={config.get('emailSubject', 'default')}\n")
+
     already_contacted = get_already_contacted()
     print(f"Already contacted: {len(already_contacted)} platforms\n")
 
-    opportunities = find_opportunities(already_contacted)
+    opportunities = find_opportunities(already_contacted, config=config)
     print(f"Found {len(opportunities)} new opportunities\n")
 
     if not opportunities:
         print("No opportunities found, exiting.")
         return
 
-    # Wait after research call to reset rate limit window
+    # Wait after research to reset rate limit window
     print("Waiting 65 seconds before contact search to avoid rate limits...\n")
     time.sleep(65)
 
@@ -26,7 +30,7 @@ def main():
     for opp in opportunities:
         try:
             print(f"Processing: {opp.get('name')} ({opp.get('category')})")
-            contacts = find_contacts(opp)
+            contacts = find_contacts(opp, config=config)
 
             if not contacts:
                 print(f"  ✗ No contacts found, logging anyway\n")
@@ -35,7 +39,7 @@ def main():
 
             emails_sent = []
             for contact in contacts:
-                success = send_email(contact, opp)
+                success = send_email(contact, opp, config=config)
                 if success:
                     emails_sent.append(contact.get('email'))
                     print(f"  ✓ Sent to {contact.get('email')}")
