@@ -24,11 +24,8 @@ def find_contacts(opportunity: dict, config: dict = None, retries: int = 3) -> l
     max_contacts = cfg.get("maxContactsPerPlatform", 3)
     skip_low = cfg.get("skipLowConfidence", True)
 
-    prompt = prompt_template.format(
-        name=opportunity.get("name", ""),
-        website=opportunity.get("website", ""),
-        contact_page=opportunity.get("contact_page", opportunity.get("website", ""))
-    )
+    # Use simple string replace instead of .format() to avoid KeyError on JSON curly braces in template
+    prompt = prompt_template.replace("{name}", opportunity.get("name", ""))                              .replace("{website}", opportunity.get("website", ""))                              .replace("{contact_page}", opportunity.get("contact_page", opportunity.get("website", "")))
 
     for attempt in range(retries):
         try:
