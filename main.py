@@ -39,10 +39,36 @@ def main():
 
             emails_sent = []
             for contact in contacts:
+                email = (contact.get('email') or '').strip()
+                if not email:
+                    continue
+                # Dedup check — don't email same person from different campaigns
+                try:
+                    import json as _json
+                    import urllib.request as _req
+                    dedup_payload = _json.dumps({'action':'check','email':email,'dedupWindowDays':90}).encode()
+                    dedup_req = _req.Request(f"{ADMIN_URL}/api/contacts", data=dedup_payload, headers={'Content-Type':'application/json'}, method='POST')
+                    with _req.urlopen(dedup_req, timeout=10) as r:
+                        dedup = _json.loads(r.read())
+                    if dedup.get('alreadyContacted'):
+                        last = dedup.get('lastContact', {})
+                        print(f"  ⏭ Skipping {email} — already contacted via {last.get('campaign')} ({last.get('date','')})")
+                        continue
+                except Exception as e:
+                    print(f"  Dedup check failed: {e}, sending anyway")
+
                 success = send_email(contact, opp, config=config)
                 if success:
-                    emails_sent.append(contact.get('email'))
-                    print(f"  ✓ Sent to {contact.get('email')}")
+                    emails_sent.append(email)
+                    print(f"  ✓ Sent to {email}")
+                    # Record in central contacts DB
+                    try:
+                        record_payload = _json.dumps({'action':'record','email':email,'channel':'email','campaign':CAMPAIGN,'platformName':opp.get('name','')}).encode()
+                        record_req = _req.Request(f"{ADMIN_URL}/api/contacts", data=record_payload, headers={'Content-Type':'application/json'}, method='POST')
+                        with _req.urlopen(record_req, timeout=10) as r:
+                            pass
+                    except Exception as e:
+                        print(f"  Contact record failed: {e}")
                 time.sleep(3)
 
             if emails_sent:
