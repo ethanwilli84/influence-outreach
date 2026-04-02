@@ -7,7 +7,6 @@ import time
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 def find_opportunities(already_contacted: list, config: dict = None, retries: int = 3) -> list:
-    # Use research prompt from admin config, fall back to default
     prompt_template = (config or {}).get("researchPrompt", "")
     per_session = (config or {}).get("perSession", 15)
 
@@ -18,20 +17,21 @@ About Ethan:
 - 20 years old, based in NYC
 - Founded a software company doing $5M+/year revenue
 - Leads a young entrepreneur community called The Taco Project
-- Topics: entrepreneurship, gen z mindset, travel/culture, living a full life while building, overcoming struggles
+- Topics: entrepreneurship, gen z mindset, travel/culture, living a full life while building
 - Has spoken at schools and entrepreneur groups before
-- No large public following yet — his credibility is his story and substance, not fame
+- No large public following yet — credibility is his story
 
-Target platforms with 1,000–100,000 listeners/followers. Avoid mega-famous shows.
-Focus on: college entrepreneurship events, NYC startup panels, niche podcasts (sneakers, fintech, gen z, young money).
+Target platforms with 1,000–100,000 listeners/followers that are actively growing and booking guests.
+Focus on: college entrepreneurship events, NYC startup panels, niche podcasts (sneakers, fintech, gen z, young money, B2B, lifestyle).
 Do NOT include pitch competitions or formats requiring prepared materials.
 
-Already contacted (skip these): {already_contacted}
+Skip these already-contacted platforms: {already_contacted}
 
-Return ONLY a valid JSON array of {per_session} objects. No other text:
-[{{"name":"...","category":"podcast|speaking","website":"...","contact_page":"...","description":"...","why_fit":"..."}}]"""
+Return ONLY a valid JSON array. No markdown, no explanation, no code fences. Just the raw JSON array:
+[{{"name":"...","category":"podcast|speaking","website":"https://...","contact_page":"https://...","description":"one sentence","why_fit":"why Ethan fits"}}]"""
 
-    already_str = ", ".join(already_contacted[-100:]) if already_contacted else "none yet"
+    # Only pass last 20 to avoid prompt bloat
+    already_str = ", ".join(already_contacted[-20:]) if already_contacted else "none"
     prompt = prompt_template.replace("{already_contacted}", already_str).replace("{per_session}", str(per_session))
 
     for attempt in range(retries):
@@ -42,12 +42,18 @@ Return ONLY a valid JSON array of {per_session} objects. No other text:
                 tools=[{"type": "web_search_20250305", "name": "web_search"}],
                 messages=[{"role": "user", "content": prompt}]
             )
+            # Collect all text blocks from response
             full_text = "".join(b.text for b in response.content if hasattr(b, 'text'))
+            print(f"  Research response length: {len(full_text)} chars")
+
             results = parse_json(full_text)
             if results:
+                print(f"  Found {len(results)} opportunities")
                 return results[:per_session]
-            print(f"  Research returned empty, retry {attempt + 1}/{retries}...")
+
+            print(f"  Research returned empty (attempt {attempt + 1}/{retries}), response preview: {full_text[:200]}")
             time.sleep(15)
+
         except anthropic.RateLimitError:
             wait = 45 * (attempt + 1)
             print(f"  Research rate limit, waiting {wait}s...")
@@ -60,19 +66,50 @@ Return ONLY a valid JSON array of {per_session} objects. No other text:
     return []
 
 def parse_json(text: str) -> list:
+    """Extract a JSON array from text, handling various formats."""
     text = text.strip()
+
+    # Strip code fences
     if "```" in text:
         for part in text.split("```"):
-            if part.startswith("json"):
-                text = part[4:].strip(); break
-            elif "[" in part:
-                text = part.strip(); break
+            stripped = part.strip()
+            if stripped.startswith("json"):
+                text = stripped[4:].strip()
+                break
+            elif stripped.startswith("["):
+                text = stripped
+                break
+
+    # Try direct parse first
     try:
         result = json.loads(text)
-        return result if isinstance(result, list) else []
+        if isinstance(result, list):
+            return result
     except:
-        match = re.search(r'\[.*\]', text, re.DOTALL)
-        if match:
-            try: return json.loads(match.group())
-            except: pass
+        pass
+
+    # Find JSON array anywhere in the text
+    match = re.search(r'\[[\s\S]*?\]', text)
+    if match:
+        try:
+            result = json.loads(match.group())
+            if isinstance(result, list):
+                return result
+        except:
+            pass
+
+    # Try finding individual JSON objects and collecting them
+    objects = re.findall(r'\{[^{}]+\}', text, re.DOTALL)
+    if objects:
+        valid = []
+        for obj in objects:
+            try:
+                parsed = json.loads(obj)
+                if parsed.get('name') and parsed.get('category'):
+                    valid.append(parsed)
+            except:
+                pass
+        if valid:
+            return valid
+
     return []
