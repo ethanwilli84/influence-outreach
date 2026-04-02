@@ -6,52 +6,71 @@ import time
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
+RESEARCH_PROMPT = """Search the web and find {per_session} NEW podcast shows or public speaking events that are a great fit for Ethan Williams (20yo NYC founder, $5M+ software company, The Taco Project community).
+
+Target: actively booking guests, 1k-100k audience, entrepreneurship/gen z/fintech/lifestyle/sneakers focus.
+Skip: mega-famous shows, pitch competitions, already-contacted platforms.
+
+Already contacted (skip these): {already_contacted}
+
+Search thoroughly, then provide your findings."""
+
+EXTRACT_PROMPT = """Convert the research findings below into a JSON array. Return ONLY the JSON array, nothing else — no markdown, no explanation, no code fences.
+
+Research findings:
+{research_text}
+
+JSON format (return exactly this structure, {per_session} items):
+[{{"name":"Platform Name","category":"podcast","website":"https://example.com","contact_page":"https://example.com/contact","description":"One sentence about them","why_fit":"Why Ethan fits here"}}]
+
+Return the raw JSON array only:"""
+
 def find_opportunities(already_contacted: list, config: dict = None, retries: int = 3) -> list:
-    prompt_template = (config or {}).get("researchPrompt", "")
-    per_session = (config or {}).get("perSession", 15)
+    cfg = config or {}
+    research_prompt_template = cfg.get("researchPrompt", "")
+    per_session = cfg.get("perSession", 15)
 
-    if not prompt_template:
-        prompt_template = """Search the web and find {per_session} NEW podcast or public speaking opportunities for a 20-year-old NYC entrepreneur named Ethan Williams.
-
-About Ethan:
-- 20 years old, based in NYC
-- Founded a software company doing $5M+/year revenue
-- Leads a young entrepreneur community called The Taco Project
-- Topics: entrepreneurship, gen z mindset, travel/culture, living a full life while building
-- Has spoken at schools and entrepreneur groups before
-- No large public following yet — credibility is his story
-
-Target platforms with 1,000–100,000 listeners/followers that are actively growing and booking guests.
-Focus on: college entrepreneurship events, NYC startup panels, niche podcasts (sneakers, fintech, gen z, young money, B2B, lifestyle).
-Do NOT include pitch competitions or formats requiring prepared materials.
-
-Skip these already-contacted platforms: {already_contacted}
-
-Return ONLY a valid JSON array. No markdown, no explanation, no code fences. Just the raw JSON array:
-[{{"name":"...","category":"podcast|speaking","website":"https://...","contact_page":"https://...","description":"one sentence","why_fit":"why Ethan fits"}}]"""
-
-    # Only pass last 20 to avoid prompt bloat
+    # Use last 20 only to avoid prompt bloat
     already_str = ", ".join(already_contacted[-20:]) if already_contacted else "none"
-    prompt = prompt_template.replace("{already_contacted}", already_str).replace("{per_session}", str(per_session))
 
     for attempt in range(retries):
         try:
+            # Step 1: Research with web search (let it write freely)
+            research_q = (research_prompt_template or RESEARCH_PROMPT).replace(
+                "{already_contacted}", already_str
+            ).replace("{per_session}", str(per_session))
+
             response = client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=4000,
                 tools=[{"type": "web_search_20250305", "name": "web_search"}],
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": research_q}]
             )
-            # Collect all text blocks from response
-            full_text = "".join(b.text for b in response.content if hasattr(b, 'text'))
-            print(f"  Research response length: {len(full_text)} chars")
+            research_text = "".join(b.text for b in response.content if hasattr(b, 'text'))
+            print(f"  Research response length: {len(research_text)} chars")
 
-            results = parse_json(full_text)
+            # Try parsing directly first (in case it did return JSON)
+            results = parse_json(research_text)
             if results:
-                print(f"  Found {len(results)} opportunities")
+                print(f"  Found {len(results)} opportunities (direct parse)")
                 return results[:per_session]
 
-            print(f"  Research returned empty (attempt {attempt + 1}/{retries}), response preview: {full_text[:200]}")
+            # Step 2: Extract as JSON using a separate call (no web search)
+            extract_prompt = EXTRACT_PROMPT.replace("{research_text}", research_text[:3000]).replace("{per_session}", str(per_session))
+            extract_response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=2000,
+                messages=[{"role": "user", "content": extract_prompt}]
+            )
+            json_text = extract_response.content[0].text if extract_response.content else ""
+            print(f"  Extract response length: {len(json_text)} chars, preview: {json_text[:100]}")
+
+            results = parse_json(json_text)
+            if results:
+                print(f"  Found {len(results)} opportunities (extract step)")
+                return results[:per_session]
+
+            print(f"  Still empty after extract (attempt {attempt + 1}/{retries})")
             time.sleep(15)
 
         except anthropic.RateLimitError:
@@ -66,50 +85,40 @@ Return ONLY a valid JSON array. No markdown, no explanation, no code fences. Jus
     return []
 
 def parse_json(text: str) -> list:
-    """Extract a JSON array from text, handling various formats."""
     text = text.strip()
-
     # Strip code fences
-    if "```" in text:
-        for part in text.split("```"):
-            stripped = part.strip()
-            if stripped.startswith("json"):
-                text = stripped[4:].strip()
-                break
-            elif stripped.startswith("["):
-                text = stripped
-                break
-
-    # Try direct parse first
+    for fence in ["```json", "```"]:
+        if fence in text:
+            parts = text.split(fence)
+            for part in parts:
+                stripped = part.strip().rstrip("`").strip()
+                if stripped.startswith("["):
+                    text = stripped
+                    break
+    # Direct parse
     try:
         result = json.loads(text)
-        if isinstance(result, list):
+        if isinstance(result, list) and result:
             return result
     except:
         pass
-
-    # Find JSON array anywhere in the text
+    # Find array in text
     match = re.search(r'\[[\s\S]*?\]', text)
     if match:
         try:
             result = json.loads(match.group())
-            if isinstance(result, list):
+            if isinstance(result, list) and result:
                 return result
         except:
             pass
-
-    # Try finding individual JSON objects and collecting them
-    objects = re.findall(r'\{[^{}]+\}', text, re.DOTALL)
-    if objects:
-        valid = []
-        for obj in objects:
-            try:
-                parsed = json.loads(obj)
-                if parsed.get('name') and parsed.get('category'):
-                    valid.append(parsed)
-            except:
-                pass
-        if valid:
-            return valid
-
-    return []
+    # Collect individual objects
+    objects = re.findall(r'\{[^{}]*"name"[^{}]*\}', text, re.DOTALL)
+    valid = []
+    for obj in objects:
+        try:
+            parsed = json.loads(obj)
+            if parsed.get("name"):
+                valid.append(parsed)
+        except:
+            pass
+    return valid
