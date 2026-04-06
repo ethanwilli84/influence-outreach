@@ -33,11 +33,11 @@ def gmail_history_check(email: str, domain: str = None, name: str = None) -> dic
             f"{ADMIN_URL}/api/gmail-check",
             data=payload, headers={'Content-Type': 'application/json'}, method='POST'
         )
-        with urllib.request.urlopen(req, timeout=20) as r:
+        with urllib.request.urlopen(req, timeout=45) as r:  # longer timeout for GH Actions
             return json.loads(r.read())
     except Exception as e:
-        print(f"  Gmail history check failed: {e}, skipping gmail check")
-        return {'shouldSkip': False, 'summary': {'sentCount': 0}}
+        print(f"  ⚠ Gmail history check failed: {e} — defaulting to SKIP (safe)")
+        return {'ok': False, 'shouldSkip': True, 'summary': {'sentCount': 0}, 'verdict': f'SKIP — gmail check failed: {e}'}
 
 def record_contact(email: str, platform_name: str):
     """Record a sent email in the central contacts DB."""
@@ -157,19 +157,21 @@ def main():
                     # Layer 2: Deep Gmail history search
                     # Searches sent mail + inbox — catches manual outreach outside campaigns
                     domain = email.split('@')[1] if '@' in email else None
-                    # Cache by domain to avoid repeated IMAP searches for same company
+                    # Extract short company keyword to catch "Bastion (now part of Mesirow)" → search "Mesirow"
+                    import re as _re
+                    raw_name = opp.get('name', '')
+                    short_name = _re.sub(r'\(.*?\)', '', raw_name).strip()
+                    short_name = ' '.join(short_name.split()[:2]) if short_name else raw_name
+
+                    # Cache by domain to avoid repeated IMAP searches per run
                     if domain and domain in _gmail_cache:
                         gmail_result = _gmail_cache[domain]
                     else:
-                        gmail_result = gmail_history_check(email, domain=domain, name=opp.get('name'))
+                        gmail_result = gmail_history_check(email, domain=domain, name=short_name)
                         if domain:
                             _gmail_cache[domain] = gmail_result
 
-                    if not gmail_result.get('ok') and gmail_result.get('shouldSkip'):
-                        # Check failed — safe default is to skip
-                        print(f"  ⏭ [Gmail] Skipping {email} — {gmail_result.get('verdict','check failed, skipping to be safe')}")
-                        continue
-                    elif gmail_result.get('shouldSkip'):
+                    if gmail_result.get('shouldSkip'):
                         sent = gmail_result.get('summary', {}).get('sentCount', 0)
                         history = gmail_result.get('sentHistory', [])
                         recent = history[0] if history else {}
