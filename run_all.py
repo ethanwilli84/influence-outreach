@@ -105,6 +105,16 @@ def main():
             continue
 
         try:
+            # Re-check pause status right before running — user may have paused/unpaused since startup
+            try:
+                fresh_settings = api(f"/api/settings?campaign={slug}")
+                if fresh_settings.get("paused"):
+                    print(f"  ⏸ {slug} is paused (re-checked just before run) — skipping")
+                    release_lock(slug)
+                    continue
+            except Exception as e:
+                print(f"  Warning: couldn't re-check pause status: {e}")
+            
             run_campaign(slug)
         except Exception as e:
             print(f"\n❌ Campaign {slug} failed: {e}")
