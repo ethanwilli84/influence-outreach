@@ -104,7 +104,7 @@ def main():
         print(f"--- Batch {batch}: need {still_need} more sends ---\n")
 
         # Re-fetch already_contacted each batch so new sends are excluded
-        already_contacted = get_already_contacted()
+        already_contacted = set(get_already_contacted())
         already_contacted.update(seen_this_run)
 
         opportunities = find_opportunities(already_contacted, config=config)
