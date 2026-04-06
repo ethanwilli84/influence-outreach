@@ -8,7 +8,7 @@ from src.emailer import send_email
 from src.sheets_logger import log_to_sheet, get_already_contacted, get_config, ADMIN_URL, CAMPAIGN
 
 def dedup_check(email: str, window_days: int = 90) -> dict:
-    """Check if email was already contacted. Returns {alreadyContacted, lastContact}."""
+    """Layer 1: Check central contacts DB (fast, campaign-based)."""
     try:
         payload = json.dumps({'action': 'check', 'email': email, 'dedupWindowDays': window_days}).encode()
         req = urllib.request.Request(
@@ -18,8 +18,26 @@ def dedup_check(email: str, window_days: int = 90) -> dict:
         with urllib.request.urlopen(req, timeout=10) as r:
             return json.loads(r.read())
     except Exception as e:
-        print(f"  Dedup check failed: {e}, sending anyway")
+        print(f"  Dedup DB check failed: {e}")
         return {'alreadyContacted': False}
+
+def gmail_history_check(email: str, domain: str = None, name: str = None) -> dict:
+    """Layer 2: Search actual Gmail for any prior contact — catches manual outreach outside campaigns."""
+    try:
+        payload = json.dumps({
+            'email': email,
+            'domain': domain or email.split('@')[1] if '@' in email else None,
+            'name': name,
+        }).encode()
+        req = urllib.request.Request(
+            f"{ADMIN_URL}/api/gmail-check",
+            data=payload, headers={'Content-Type': 'application/json'}, method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read())
+    except Exception as e:
+        print(f"  Gmail history check failed: {e}, skipping gmail check")
+        return {'shouldSkip': False, 'summary': {'sentCount': 0}}
 
 def record_contact(email: str, platform_name: str):
     """Record a sent email in the central contacts DB."""
@@ -73,12 +91,23 @@ def main():
                 if not email:
                     continue
 
-                # Dedup — skip if already contacted within window
+                # Layer 1: Central contacts DB (fast)
                 result = dedup_check(email, window_days=config.get('dedupWindowDays', 90))
                 if result.get('alreadyContacted'):
                     last = result.get('lastContact') or {}
-                    print(f"  ⏭ Skipping {email} — already contacted via {last.get('campaign','?')} on {str(last.get('date','?'))[:10]}")
+                    print(f"  ⏭ [DB] Skipping {email} — contacted via {last.get('campaign','?')} on {str(last.get('date','?'))[:10]}")
                     continue
+
+                # Layer 2: Gmail history search (catches manual outreach outside campaigns)
+                domain = email.split('@')[1] if '@' in email else None
+                gmail_result = gmail_history_check(email, domain=domain, name=opp.get('name'))
+                if gmail_result.get('shouldSkip'):
+                    sent = gmail_result.get('summary', {}).get('sentCount', 0)
+                    print(f"  ⏭ [Gmail] Skipping {email} — found {sent} prior sent emails to this contact/domain")
+                    continue
+                elif gmail_result.get('summary', {}).get('totalMatches', 0) > 0:
+                    total = gmail_result.get('summary', {}).get('totalMatches', 0)
+                    print(f"  ⚠ [Gmail] {total} email threads found with {domain}, but none sent by us — proceeding")
 
                 success = send_email(contact, opp, config=config)
                 if success:
