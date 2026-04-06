@@ -107,7 +107,7 @@ def main():
         already_contacted = set(get_already_contacted())
         already_contacted.update(seen_this_run)
 
-        opportunities = find_opportunities(already_contacted, config=config)
+        opportunities = find_opportunities(list(already_contacted), config=config)
         # Filter out anything we already tried this run
         opportunities = [o for o in opportunities if o.get('name') not in seen_this_run]
         for o in opportunities:

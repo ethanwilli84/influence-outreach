@@ -31,7 +31,7 @@ def find_opportunities(already_contacted: list, config: dict = None, retries: in
     per_session = cfg.get("perSession", 15)
 
     # Use last 20 only to avoid prompt bloat
-    already_str = ", ".join(already_contacted[-20:]) if already_contacted else "none"
+    already_str = ", ".join(list(already_contacted)[-20:]) if already_contacted else "none"
 
     for attempt in range(retries):
         try:
