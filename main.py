@@ -55,8 +55,36 @@ def record_contact(email: str, platform_name: str):
     except Exception as e:
         print(f"  Contact record failed: {e}")
 
+def atomic_dedup(email: str, campaign_name: str = '', window_days: int = 90) -> dict:
+    """Atomic check-and-record — prevents race condition between concurrent campaigns.
+    
+    If two campaigns run close together and both check the same email before
+    either records it, both would send. This does the check + record in one
+    atomic DB operation so only the first one wins.
+    """
+    try:
+        payload = json.dumps({
+            'action': 'check_and_record',
+            'email': email,
+            'channel': 'email',
+            'campaign': CAMPAIGN,
+            'platformName': campaign_name,
+            'dedupWindowDays': window_days,
+        }).encode()
+        req = urllib.request.Request(
+            f"{ADMIN_URL}/api/contacts",
+            data=payload, headers={'Content-Type': 'application/json'}, method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())
+    except Exception as e:
+        print(f"  Atomic dedup failed: {e}, using non-atomic fallback")
+        return dedup_check(email, window_days)
+
+
 def main():
     print(f"\n🚀 Starting outreach run — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+    _gmail_cache: dict = {}  # domain -> {shouldSkip, sentCount} — avoid repeat Gmail searches per run
 
     config = get_config()
     print(f"Config loaded: perSession={config.get('perSession', 15)}, emailSubject={config.get('emailSubject', 'default')}\n")
@@ -91,29 +119,50 @@ def main():
                 if not email:
                     continue
 
-                # Layer 1: Central contacts DB (fast)
-                result = dedup_check(email, window_days=config.get('dedupWindowDays', 90))
+                # Layer 1: Atomic check-and-record (prevents race condition if 2 campaigns run close together)
+                result = atomic_dedup(email, campaign_name=opp.get('name',''), window_days=config.get('dedupWindowDays', 90))
                 if result.get('alreadyContacted'):
                     last = result.get('lastContact') or {}
-                    print(f"  ⏭ [DB] Skipping {email} — contacted via {last.get('campaign','?')} on {str(last.get('date','?'))[:10]}")
+                    race = ' (race caught)' if result.get('raceCaught') else ''
+                    print(f"  ⏭ [DB] Skipping {email} — already contacted{race}")
                     continue
 
-                # Layer 2: Gmail history search (catches manual outreach outside campaigns)
+                # Layer 2: Deep Gmail history search
+                # Searches sent mail + inbox — catches manual outreach outside campaigns
                 domain = email.split('@')[1] if '@' in email else None
-                gmail_result = gmail_history_check(email, domain=domain, name=opp.get('name'))
-                if gmail_result.get('shouldSkip'):
-                    sent = gmail_result.get('summary', {}).get('sentCount', 0)
-                    print(f"  ⏭ [Gmail] Skipping {email} — found {sent} prior sent emails to this contact/domain")
+                # Cache by domain to avoid repeated IMAP searches for same company
+                if domain and domain in _gmail_cache:
+                    gmail_result = _gmail_cache[domain]
+                else:
+                    gmail_result = gmail_history_check(email, domain=domain, name=opp.get('name'))
+                    if domain:
+                        _gmail_cache[domain] = gmail_result
+
+                if not gmail_result.get('ok') and gmail_result.get('shouldSkip'):
+                    # Check failed — safe default is to skip
+                    print(f"  ⏭ [Gmail] Skipping {email} — {gmail_result.get('verdict','check failed, skipping to be safe')}")
                     continue
-                elif gmail_result.get('summary', {}).get('totalMatches', 0) > 0:
-                    total = gmail_result.get('summary', {}).get('totalMatches', 0)
-                    print(f"  ⚠ [Gmail] {total} email threads found with {domain}, but none sent by us — proceeding")
+                elif gmail_result.get('shouldSkip'):
+                    sent = gmail_result.get('summary', {}).get('sentCount', 0)
+                    history = gmail_result.get('sentHistory', [])
+                    recent = history[0] if history else {}
+                    print(f"  ⏭ [Gmail] Skipping {email}")
+                    print(f"     Found {sent} prior sent email(s) to this domain")
+                    if recent:
+                        print(f"     Last: '{recent.get('subject','')}' on {recent.get('date','')} → {recent.get('to','')[:40]}")
+                    continue
+                else:
+                    received = gmail_result.get('summary', {}).get('receivedCount', 0)
+                    if received > 0:
+                        print(f"  ⚠ [Gmail] They've emailed you {received}x but you haven't sent to them — proceeding")
+                    else:
+                        print(f"  ✓ [Gmail] No prior email history — clear to send")
 
                 success = send_email(contact, opp, config=config)
                 if success:
                     emails_sent.append(email)
                     print(f"  ✓ Sent to {email}")
-                    record_contact(email, opp.get('name', ''))
+                    # Contact already recorded atomically above via atomic_dedup
                 time.sleep(3)
 
             if emails_sent:

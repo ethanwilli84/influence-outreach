@@ -2,8 +2,13 @@ name: Daily Outreach
 
 on:
   schedule:
-    - cron: '0 14 * * *'
+    - cron: '0 14 * * *'  # 10 AM EDT — all campaigns run sequentially, one after another
   workflow_dispatch:
+    inputs:
+      campaign_slug:
+        description: 'Run a specific campaign only (leave blank for all)'
+        required: false
+        default: ''
 
 jobs:
   outreach:
@@ -14,9 +19,11 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - name: Run outreach
+
+      - name: Run all active campaigns sequentially
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           ADMIN_URL: ${{ secrets.ADMIN_URL }}
-        run: python main.py
+          SPECIFIC_CAMPAIGN: ${{ inputs.campaign_slug }}
+        run: python run_all.py
