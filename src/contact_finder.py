@@ -42,6 +42,10 @@ def find_contacts(opportunity: dict, config: dict = None, retries: int = 3) -> l
                 filtered = [c for c in contacts if c.get("confidence") != "low"]
                 contacts = filtered if filtered else contacts
 
+            if not contacts:
+                print(f"  No verified contacts found, trying guessed emails...")
+                return guess_fallback_emails(opportunity, config)
+
             return contacts[:max_contacts]
 
         except anthropic.RateLimitError as e:
@@ -50,10 +54,56 @@ def find_contacts(opportunity: dict, config: dict = None, retries: int = 3) -> l
             time.sleep(wait)
         except Exception as e:
             print(f"  Contact finder error: {e}")
-            return []
+            break
 
-    print(f"  Failed after {retries} retries")
-    return []
+    print(f"  Failed after {retries} retries, trying guessed emails...")
+    return guess_fallback_emails(opportunity, config)
+
+def guess_fallback_emails(opportunity: dict, config: dict = None) -> list:
+    """Generate guessed email addresses when no verified contacts found.
+    
+    Companies like Cross River, large banks etc. rarely list individual emails
+    but almost always have info@, contact@, partnerships@, etc.
+    """
+    website = opportunity.get("website", "")
+    category = opportunity.get("category", "").lower()
+    name = opportunity.get("name", "")
+
+    if not website:
+        return []
+
+    # Extract clean domain from URL
+    import re
+    domain_match = re.search(r'(?:https?://)?(?:www\.)?([^/\s]+)', website)
+    if not domain_match:
+        return []
+    domain = domain_match.group(1).lower().strip()
+
+    # Base guesses — valid for almost any company
+    prefixes = ["info", "contact", "hello"]
+
+    # Category-specific prefixes
+    if any(kw in category for kw in ["lend", "finance", "credit", "bank", "capital", "fund", "invest"]):
+        prefixes += ["lending", "funding", "investors", "partnerships", "business", "commercial"]
+    elif any(kw in category for kw in ["podcast", "media", "press", "publish"]):
+        prefixes += ["press", "media", "podcast", "guest", "bookings", "pitch"]
+    elif any(kw in category for kw in ["warehouse", "logistics", "supply"]):
+        prefixes += ["partnerships", "business", "sales", "operations"]
+    else:
+        prefixes += ["partnerships", "business", "support"]
+
+    emails = []
+    for prefix in prefixes:
+        emails.append({
+            "email": f"{prefix}@{domain}",
+            "name": f"{name} ({prefix})",
+            "title": "General Contact",
+            "confidence": "low",
+            "guessed": True,  # Flag so we know this wasn't verified
+        })
+
+    return emails[:5]  # Max 5 fallback guesses
+
 
 def parse_json(text: str) -> list:
     text = text.strip()
