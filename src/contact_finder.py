@@ -61,48 +61,56 @@ def find_contacts(opportunity: dict, config: dict = None, retries: int = 3) -> l
 
 def guess_fallback_emails(opportunity: dict, config: dict = None) -> list:
     """Generate guessed email addresses when no verified contacts found.
-    
-    Companies like Cross River, large banks etc. rarely list individual emails
-    but almost always have info@, contact@, partnerships@, etc.
+    Uses prefixes configured per-campaign in admin settings.
+    Falls back to sensible defaults if not configured.
     """
+    cfg = config or {}
+    
+    # Respect campaign-level toggle
+    if not cfg.get("useFallbackEmails", True):
+        return []
+
     website = opportunity.get("website", "")
-    category = opportunity.get("category", "").lower()
     name = opportunity.get("name", "")
+    category = opportunity.get("category", "").lower()
 
     if not website:
         return []
 
-    # Extract clean domain from URL
+    # Extract clean domain
     import re
     domain_match = re.search(r'(?:https?://)?(?:www\.)?([^/\s]+)', website)
     if not domain_match:
         return []
     domain = domain_match.group(1).lower().strip()
 
-    # Base guesses — valid for almost any company
-    prefixes = ["info", "contact", "hello"]
-
-    # Category-specific prefixes
-    if any(kw in category for kw in ["lend", "finance", "credit", "bank", "capital", "fund", "invest"]):
-        prefixes += ["lending", "funding", "investors", "partnerships", "business", "commercial"]
-    elif any(kw in category for kw in ["podcast", "media", "press", "publish"]):
-        prefixes += ["press", "media", "podcast", "guest", "bookings", "pitch"]
-    elif any(kw in category for kw in ["warehouse", "logistics", "supply"]):
-        prefixes += ["partnerships", "business", "sales", "operations"]
+    # Use campaign-configured prefixes if set, otherwise smart defaults by category
+    configured = cfg.get("fallbackPrefixes", [])
+    if configured:
+        prefixes = configured
     else:
-        prefixes += ["partnerships", "business", "support"]
+        # Smart defaults by category
+        prefixes = ["info", "contact", "hello"]
+        if any(kw in category for kw in ["lend", "finance", "credit", "bank", "capital", "fund", "invest"]):
+            prefixes += ["lending", "funding", "investors", "partnerships", "business", "commercial"]
+        elif any(kw in category for kw in ["podcast", "media", "press", "publish"]):
+            prefixes += ["press", "media", "podcast", "guest", "bookings", "pitch"]
+        elif any(kw in category for kw in ["warehouse", "logistics", "supply"]):
+            prefixes += ["partnerships", "business", "sales", "operations"]
+        else:
+            prefixes += ["partnerships", "business", "support"]
 
     emails = []
     for prefix in prefixes:
         emails.append({
             "email": f"{prefix}@{domain}",
-            "name": f"{name} ({prefix})",
-            "title": "General Contact",
+            "name": f"{name} ({prefix}@)",
+            "title": "General Contact (guessed)",
             "confidence": "low",
-            "guessed": True,  # Flag so we know this wasn't verified
+            "guessed": True,
         })
 
-    return emails[:5]  # Max 5 fallback guesses
+    return emails[:6]  # Max 6 fallback guesses
 
 
 def parse_json(text: str) -> list:
