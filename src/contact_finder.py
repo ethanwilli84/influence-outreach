@@ -46,7 +46,18 @@ def find_contacts(opportunity: dict, config: dict = None, retries: int = 3) -> l
                 print(f"  No verified contacts found, trying guessed emails...")
                 return guess_fallback_emails(opportunity, config)
 
-            return contacts[:max_contacts]
+            # Pad with guessed emails if verified contacts < max_contacts
+            verified = contacts[:max_contacts]
+            if len(verified) < max_contacts and cfg.get('useFallbackEmails', True):
+                still_need = max_contacts - len(verified)
+                guessed = guess_fallback_emails(opportunity, config)
+                # Exclude domains already covered by verified contacts
+                verified_domains = {e.get('email','').split('@')[1] for e in verified if '@' in e.get('email','')}
+                guessed = [g for g in guessed if g['email'].split('@')[1] not in verified_domains]
+                if guessed:
+                    print(f"  Found {len(verified)} verified, padding with {min(still_need, len(guessed))} guessed email(s)")
+                    verified = verified + guessed[:still_need]
+            return verified
 
         except anthropic.RateLimitError as e:
             wait = 30 * (attempt + 1)
