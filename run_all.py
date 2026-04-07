@@ -1,21 +1,19 @@
 """
 run_all.py — Campaign orchestrator
 
-Fetches all active campaigns from the admin API and runs them sequentially
-on a single GitHub Actions runner. This prevents:
-  - Dedup race conditions (campaigns can't overlap)
-  - Gmail rate limit hammering
-  - Multiple IMAP connections fighting each other
+Runs each campaign as a SEPARATE SUBPROCESS so environment variables
+(especially CAMPAIGN_SLUG) are fully isolated per campaign.
 
-Flow:
-  1. Fetch all active, unpaused campaigns from admin
-  2. For each campaign: acquire DB lock → run → release lock → wait 60s cooldown
-  3. If a lock already exists (shouldn't happen in GH Actions but safety net) → skip
+The importlib.reload approach was broken: CAMPAIGN in sheets_logger.py
+is set at module import time, so it never updated for campaigns 2, 3, 4.
+All their records were logged under campaign #1 (influence-outreach).
 """
 
 import os
+import sys
 import time
 import json
+import subprocess
 import urllib.request
 from datetime import datetime
 
@@ -30,7 +28,6 @@ def api(path: str, method: str = "GET", body: dict = None) -> dict:
         return json.loads(r.read())
 
 def acquire_lock(campaign_slug: str) -> bool:
-    """Try to acquire a run lock. Returns False if already locked (another run in progress)."""
     try:
         result = api("/api/campaign-lock", "POST", {
             "action": "acquire",
@@ -40,7 +37,7 @@ def acquire_lock(campaign_slug: str) -> bool:
         return result.get("acquired", False)
     except Exception as e:
         print(f"  Lock acquire failed: {e} — proceeding anyway")
-        return True  # Safe to proceed if lock system is down
+        return True
 
 def release_lock(campaign_slug: str):
     try:
@@ -49,31 +46,34 @@ def release_lock(campaign_slug: str):
         print(f"  Lock release failed: {e}")
 
 def run_campaign(slug: str):
-    """Run a single campaign by setting CAMPAIGN_SLUG and calling main.py logic."""
-    os.environ["CAMPAIGN_SLUG"] = slug
+    """Run a single campaign as a subprocess — fully isolated env vars, fresh module state."""
     print(f"\n{'='*60}")
     print(f"  Running: {slug}")
     print(f"  Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}\n")
 
-    # Import and run main inline (same process, no subprocess needed)
-    # This shares the same Python environment and avoids process overhead
-    import importlib
-    import main as outreach_main
-    importlib.reload(outreach_main)  # Reload so CAMPAIGN_SLUG env var is picked up fresh
-    outreach_main.main()
+    # Copy current env and set campaign slug
+    env = os.environ.copy()
+    env["CAMPAIGN_SLUG"] = slug
+
+    result = subprocess.run(
+        [sys.executable, "main.py"],
+        env=env,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+    )
+
+    if result.returncode != 0:
+        print(f"\n⚠ Campaign {slug} exited with code {result.returncode}")
 
 def main():
     print(f"\n🚀 Campaign Orchestrator starting — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
-    # Fetch all campaigns
     try:
         campaigns = api("/api/campaigns")
     except Exception as e:
         print(f"Failed to fetch campaigns: {e}")
         return
 
-    # Filter: only active + not paused
     active = []
     for c in campaigns:
         if not c.get("active", True):
@@ -87,7 +87,6 @@ def main():
         except Exception as e:
             print(f"  ⚠ Couldn't fetch settings for {c['slug']}: {e}")
 
-    # If a specific campaign was requested (manual dispatch), filter to just that one
     if SPECIFIC_CAMPAIGN:
         active = [c for c in active if c["slug"] == SPECIFIC_CAMPAIGN]
         if not active:
@@ -99,31 +98,28 @@ def main():
     for i, campaign in enumerate(active):
         slug = campaign["slug"]
 
-        # Acquire lock
         if not acquire_lock(slug):
-            print(f"  🔒 {slug} is already locked (another run in progress?) — skipping")
+            print(f"  🔒 {slug} already locked — skipping")
             continue
 
         try:
-            # Re-check pause status right before running — user may have paused/unpaused since startup
             try:
                 fresh_settings = api(f"/api/settings?campaign={slug}")
                 if fresh_settings.get("paused"):
-                    print(f"  ⏸ {slug} is paused (re-checked just before run) — skipping")
+                    print(f"  ⏸ {slug} paused — skipping")
                     release_lock(slug)
                     continue
             except Exception as e:
                 print(f"  Warning: couldn't re-check pause status: {e}")
-            
+
             run_campaign(slug)
         except Exception as e:
             print(f"\n❌ Campaign {slug} failed: {e}")
         finally:
             release_lock(slug)
 
-        # Cooldown between campaigns — let Gmail breathe + dedup writes to settle
         if i < len(active) - 1:
-            cooldown = 90  # 90 seconds between campaigns
+            cooldown = 90
             print(f"\n⏳ Cooling down {cooldown}s before next campaign...\n")
             time.sleep(cooldown)
 

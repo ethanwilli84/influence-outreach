@@ -35,8 +35,10 @@ def find_opportunities(already_contacted: list, config: dict = None, retries: in
     research_prompt_template = cfg.get("researchPrompt", "")
     per_session = cfg.get("perSession", 15)
 
-    # Use last 20 only to avoid prompt bloat
-    already_str = ", ".join(list(already_contacted)[-20:]) if already_contacted else "none"
+    # Pass up to 60 — enough context for research to avoid repeats
+    # Truncate each name to keep prompt manageable
+    already_list = [str(x)[:50] for x in list(already_contacted)[-60:]]
+    already_str = ", ".join(already_list) if already_list else "none"
 
     for attempt in range(retries):
         try:
@@ -45,9 +47,13 @@ def find_opportunities(already_contacted: list, config: dict = None, retries: in
                 "{already_contacted}", already_str
             ).replace("{per_session}", str(per_session)) + """
 
-CRITICAL: Use web_search multiple times with varied queries to find diverse real results.
-Report ONLY companies/people actually found in search results with their real URLs.
-If you can only verify 5 real ones, return 5. NEVER invent Placeholder entries."""
+CRITICAL RULES:
+- Run web_search at least 4 times with DIFFERENT angles — vary by niche, geography, audience size, platform type
+- DO NOT repeat any company from the already-contacted list above — that is a hard skip
+- Prioritize OBSCURE and NICHE targets over well-known ones (they have less competition in their inbox)
+- Report ONLY what you actually found with verified real URLs
+- If you can only verify 5 real ones after searching, return 5 — quality beats quota
+- NEVER invent Placeholder entries under any circumstances"""
 
             response = client.messages.create(
                 model="claude-sonnet-4-20250514",
