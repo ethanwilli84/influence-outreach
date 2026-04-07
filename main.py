@@ -95,7 +95,7 @@ def main():
 
     sent_count = 0
     batch = 0
-    max_batches = 5  # Safety cap — never run more than 5 research rounds per session
+    max_batches = 10  # Increased from 5 — needed when many contacts are dedup-blocked
     seen_this_run: set = set()  # Track names found this run to avoid re-researching same ones
 
     while sent_count < target and batch < max_batches:
@@ -203,7 +203,10 @@ def main():
                     sent_count += 1
                     batch_sent += 1
                 elif contacts:
-                    log_to_sheet(opp, [], status='Send Failed')
+                    # Distinguish: were any sends actually attempted, or all blocked by dedup/gmail?
+                    all_skipped = not any(True for c2 in contacts if (c2.get('email') or '').strip())
+                    status = 'Send Failed' if not all_skipped else 'No Contact Found'
+                    log_to_sheet(opp, [], status=status)
                 print()
                 time.sleep(15)
 

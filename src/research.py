@@ -35,10 +35,14 @@ def find_opportunities(already_contacted: list, config: dict = None, retries: in
     research_prompt_template = cfg.get("researchPrompt", "")
     per_session = cfg.get("perSession", 15)
 
-    # Pass up to 60 — enough context for research to avoid repeats
-    # Truncate each name to keep prompt manageable
-    already_list = [str(x)[:50] for x in list(already_contacted)[-60:]]
-    already_str = ", ".join(already_list) if already_list else "none"
+    # Pass ALL already-contacted names so research avoids re-discovering them
+    # Truncate each name for prompt efficiency, split into readable list
+    already_list = [str(x)[:40] for x in already_contacted]
+    if len(already_list) > 100:
+        # Too many to list — send summary + recent ones
+        already_str = f"{len(already_list)} companies already contacted (recent: " + ", ".join(already_list[-40:]) + ")"
+    else:
+        already_str = ", ".join(already_list) if already_list else "none"
 
     for attempt in range(retries):
         try:

@@ -22,7 +22,9 @@ def get_config() -> dict:
 def get_already_contacted() -> list:
     try:
         records = _fetch(f"/api/outreach?campaign={CAMPAIGN}")
-        return [r["name"] for r in records if r.get("name")]
+        names = [r["name"] for r in records if r.get("name")]
+        print(f"  [dedup] {len(names)} platforms already contacted for {CAMPAIGN}")
+        return names  # ALL names — research needs full list to avoid re-discovering same firms
     except Exception as e:
         print(f"API read error: {e}")
         return []
