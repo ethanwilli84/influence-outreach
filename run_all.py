@@ -56,14 +56,21 @@ def run_campaign(slug: str):
     env = os.environ.copy()
     env["CAMPAIGN_SLUG"] = slug
 
-    result = subprocess.run(
+
+    # Stream subprocess output in real-time so GitHub Actions logs capture everything
+    process = subprocess.Popen(
         [sys.executable, "main.py"],
         env=env,
         cwd=os.path.dirname(os.path.abspath(__file__)),
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
     )
+    for line in process.stdout:
+        print(line, end="", flush=True)
+    process.wait()
 
-    if result.returncode != 0:
-        print(f"\n⚠ Campaign {slug} exited with code {result.returncode}")
+    if process.returncode != 0:
+        print("WARNING: Campaign " + slug + " exited with code " + str(process.returncode))
 
 def main():
     print(f"\n🚀 Campaign Orchestrator starting — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
