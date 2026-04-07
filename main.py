@@ -108,8 +108,12 @@ def main():
         already_contacted.update(seen_this_run)
 
         opportunities = find_opportunities(list(already_contacted), config=config)
-        # Filter out anything we already tried this run
-        opportunities = [o for o in opportunities if o.get('name') not in seen_this_run]
+        # Filter out anything we already tried this run + AI-generated placeholder names
+        opportunities = [o for o in opportunities 
+            if o.get('name') not in seen_this_run
+            and 'placeholder' not in o.get('name','').lower()
+            and o.get('name','').strip()  # must have a real name
+        ]
         for o in opportunities:
             seen_this_run.add(o.get('name', ''))
 
