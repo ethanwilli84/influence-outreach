@@ -75,6 +75,13 @@ def run_campaign(slug: str):
 def main():
     print(f"\n🚀 Campaign Orchestrator starting — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
+
+    # Clear stale locks (> 3 hours) before starting to avoid blocking
+    try:
+        api("/api/campaign-lock", "POST", {"action": "cleanup"})
+    except:
+        pass
+
     try:
         campaigns = api("/api/campaigns")
     except Exception as e:
