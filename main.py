@@ -95,7 +95,7 @@ def main():
 
     sent_count = 0
     batch = 0
-    max_batches = 10  # Increased from 5 — needed when many contacts are dedup-blocked
+    max_batches = 5   # 5 is enough — lead pool handles most; each batch = 1 Sonnet API call
     seen_this_run: set = set()  # Track names found this run to avoid re-researching same ones
 
     while sent_count < target and batch < max_batches:
